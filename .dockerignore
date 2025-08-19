@@ -1,0 +1,5 @@
+.git
+volumes/logs/*
+*.log
+pycache
+*.pyc

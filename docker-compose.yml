@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  tg-forwarder:
+    build: .
+    container_name: tg-forwarder
+    restart: always
+    volumes:
+      - /mnt/configs_containers/tg-bot-channel-to-forum/volumes:/app/volumes
+    environment:
+      - PYTHONUNBUFFERED=1

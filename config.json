@@ -1,0 +1,27 @@
+{
+  "api_id": 123456,
+  "api_hash": "abc123def4567890",
+  "bot_token": "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+  "source_channel": "https://t.me/your_channel",
+  "targets": [
+    {
+      "forum_chat_id": -1001111111111,
+      "thread_id": 11,
+      "filters": {
+        "has_photo": true,
+        "keywords": ["важно", "обновление"]
+      }
+    },
+    {
+      "forum_chat_id": -1002222222222,
+      "thread_id": 22,
+      "filters": {
+        "has_video": true
+      }
+    },
+    {
+      "forum_chat_id": -1003333333333,
+      "thread_id": 33
+    }
+  ]
+}
