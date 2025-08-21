@@ -112,9 +112,10 @@ async def handler(event: events.NewMessage.Event) -> None:
     for target in targets:
         try:
             if check_filters(event.message, target.filters):
-                await event.message.forward_to(
+                await client.forward_messages(
                     entity=target.forum_chat_id,
-                    top_msg_id=target.thread_id
+                    messages=event.message,
+                    message_thread_id=target.thread_id
                 )
                 logger.info(f"Репост {event.message.id} → {target.forum_chat_id}#{target.thread_id}")
         except Exception as e:
