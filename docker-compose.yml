@@ -1,6 +1,6 @@
 services:
   tg-forwarder:
-    build: .
+    image: oddann/tg-bot-channel-to-forum:latest
     container_name: tg-forwarder
     restart: always
     volumes:
