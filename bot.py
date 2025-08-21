@@ -1,7 +1,7 @@
 """
 Бот для репоста сообщений из Telegram-канала в форум-чат.
 Поддерживает фильтрацию, логирование с названиями, ссылками, версиями модулей и названиями тем.
-Добавляет ссылку на канал (invite_link_to_source_channel или source_channel) в сообщения.
+Добавляет название канала в сообщения без предпросмотра ссылок.
 """
 
 import json
@@ -147,13 +147,12 @@ def check_filters(message: Message, filters: Optional[Filter]) -> bool:
 async def handler(event: events.NewMessage.Event) -> None:
     """
     Обработчик новых сообщений из источника (канала).
-    Отправляет сообщения в темы форума с учетом фильтров и добавляет ссылку на источник.
+    Отправляет сообщения в темы форума с учетом фильтров и добавляет название канала без предпросмотра.
     """
     logger.info(f"Получено сообщение {event.message.id} в канале {source_channel}")
     source_name, source_link = await get_entity_name_and_link(source_channel)
-    link_to_use = invite_link if invite_link else source_link
     message_text = event.message.message or ""
-    message_text = f"{message_text}\n\nИсточник: {link_to_use}" if message_text else f"Источник: {link_to_use}"
+    message_text = f"{message_text}\n\nИсточник: {source_name}" if message_text else f"Источник: {source_name}"
 
     for target in targets:
         try:
@@ -164,7 +163,8 @@ async def handler(event: events.NewMessage.Event) -> None:
                     entity=target.forum_chat_id,
                     message=message_text,
                     file=event.message.media,
-                    reply_to=target.thread_id
+                    reply_to=target.thread_id,
+                    link_preview=False
                 )
                 logger.info(
                     f"Репост {event.message.id} → {target_name} ({target_link}, {topic_name})"
