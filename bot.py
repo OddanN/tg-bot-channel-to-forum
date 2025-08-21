@@ -128,17 +128,18 @@ def check_filters(message: Message, filters: Optional[Filter]) -> bool:
 async def handler(event: events.NewMessage.Event) -> None:
     """
     Обработчик новых сообщений из источника (канала).
-    Пересылает сообщения в темы форума с учетом фильтров.
+    Отправляет сообщения в темы форума с учетом фильтров.
     """
     logger.info(f"Получено сообщение {event.message.id} в канале {source_channel}")
     for target in targets:
         try:
             if check_filters(event.message, target.filters):
                 target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
-                await client.forward_messages(
+                await client.send_message(
                     entity=target.forum_chat_id,
-                    messages=event.message,
-                    message_thread_id=target.thread_id
+                    message=event.message.message or "",
+                    file=event.message.media,
+                    reply_to=target.thread_id
                 )
                 logger.info(
                     f"Репост {event.message.id} → {target_name} ({target_link})#{target.thread_id}"
