@@ -59,3 +59,24 @@ jobs:
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:sha-${{ steps.vars.outputs.sha_short }}
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:latest
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${{ github.ref_name }}
+
+      # 8. Update Docker Hub repository overview
+      - name: Update Docker Hub Overview
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          # Получаем содержимое README.md и экранируем кавычки
+          FULL_DESC=$(jq -Rs . < README.md)
+          
+          # Получаем JWT токен для API Docker Hub
+          JWT=$(curl -s -X POST https://hub.docker.com/v2/users/login/ \
+            -H "Content-Type: application/json" \
+            -d "{\"username\": \"${DOCKERHUB_USERNAME}\", \"password\": \"${DOCKERHUB_TOKEN}\"}" \
+            | jq -r .token)
+
+          # Обновляем full_description репозитория
+          curl -s -X PATCH "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/tg-bot-channel-to-forum/" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: JWT ${JWT}" \
+            -d "{\"full_description\": ${FULL_DESC}}"
