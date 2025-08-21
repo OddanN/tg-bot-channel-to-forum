@@ -1,3 +1,20 @@
+<!-- ===================== BADGES ===================== -->
+
+<!-- 1️⃣ GitHub Actions -->
+![Build Status](https://github.com/OddanN/tg-bot-channel-to-forum/actions/workflows/docker.yml/badge.svg)
+
+<!-- 2️⃣ Docker -->
+![Docker Pulls](https://img.shields.io/docker/pulls/oddann/tg-bot-channel-to-forum.svg)
+![Docker Stars](https://img.shields.io/docker/stars/oddann/tg-bot-channel-to-forum.svg)
+
+<!-- 3️⃣ GitHub Release -->
+![GitHub release](https://img.shields.io/github/v/release/OddanN/tg-bot-channel-to-forum.svg)
+
+<!-- 4️⃣ License -->
+![GitHub license](https://img.shields.io/github/license/OddanN/tg-bot-channel-to-forum.svg)
+
+<!-- ================================================== -->
+
 # Telegram Bot for Channel-to-Forum Forwarding
 
 Бот для автоматической пересылки или копирования сообщений из Telegram-канала в указанные темы форума в группах. Поддерживает фильтрацию, логирование с названиями групп, тем и версиями модулей. Режим работы (пересылка или копирование) определяется параметром `forward_mode` в `config.json`. Контейнер автоматически собирается и публикуется в Docker Hub с помощью GitHub Actions.
