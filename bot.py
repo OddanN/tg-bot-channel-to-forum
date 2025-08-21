@@ -1,6 +1,6 @@
 """
 Бот для репоста сообщений из Telegram-канала в форум-чат.
-Поддерживает фильтрацию и логирование сообщений.
+Поддерживает фильтрацию и логирование с названиями и ссылками.
 """
 
 import json
@@ -10,6 +10,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 from telethon import TelegramClient, events
 from telethon.tl.custom.message import Message
+from telethon.tl.types import Channel, Chat
 from pydantic import BaseModel, ValidationError
 
 VOLUME_DIR: str = "volumes"
@@ -79,15 +80,22 @@ targets: List[Target] = config.targets
 
 client: TelegramClient = TelegramClient("bot", api_id, api_hash).start(bot_token=bot_token)
 
+async def get_entity_name_and_link(entity_id: str | int) -> tuple[str, str]:
+    """
+    Получает название и ссылку на канал или группу.
+    """
+    try:
+        entity = await client.get_entity(entity_id)
+        name = entity.title if isinstance(entity, (Channel, Chat)) else "Unknown"
+        link = f"https://t.me/{entity.username}" if hasattr(entity, "username") and entity.username else f"ID: {entity_id}"
+        return name, link
+    except Exception as e:
+        logger.error(f"Failed to get entity {entity_id}: {e}")
+        return "Unknown", f"ID: {entity_id}"
+
 def check_filters(message: Message, filters: Optional[Filter]) -> bool:
     """
     Проверяет сообщение по заданным фильтрам.
-
-    Аргументы:
-    message: объект сообщения Telethon
-    filters: объект фильтров Pydantic (has_photo, has_video, has_document, keywords)
-
-    Возвращает True, если сообщение проходит фильтры, иначе False.
     """
     if not filters:
         return True
@@ -107,19 +115,35 @@ def check_filters(message: Message, filters: Optional[Filter]) -> bool:
 async def handler(event: events.NewMessage.Event) -> None:
     """
     Обработчик новых сообщений из источника (канала).
-    Пересылает сообщения во все указанные цели с учетом фильтров.
+    Отправляет сообщения в темы форума с учетом фильтров.
     """
     for target in targets:
         try:
             if check_filters(event.message, target.filters):
-                await client.forward_messages(
+                target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
+                await client.send_message(
                     entity=target.forum_chat_id,
-                    messages=event.message,
+                    message=event.message.message or "",
+                    file=event.message.media,
                     message_thread_id=target.thread_id
                 )
-                logger.info(f"Репост {event.message.id} → {target.forum_chat_id}#{target.thread_id}")
+                logger.info(
+                    f"Репост {event.message.id} → {target_name} ({target_link})#{target.thread_id}"
+                )
         except Exception as e:
-            logger.error(f"{e} → {target.forum_chat_id}")
+            logger.error(f"{e} → {target_name} ({target_link})")
 
-logger.info("✅ Бот запущен и слушает канал с фильтрацией...")
-client.run_until_disconnected()
+async def main():
+    """
+    Инициализация бота и логирование информации о канале и целях.
+    """
+    source_name, source_link = await get_entity_name_and_link(source_channel)
+    logger.info(f"✅ Бот запущен и слушает канал: {source_name} ({source_link})")
+
+    for target in targets:
+        target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
+        logger.info(f"Цель: {target_name} ({target_link})#{target.thread_id}")
+
+with client:
+    client.loop.run_until_complete(main())
+    client.run_until_disconnected()
