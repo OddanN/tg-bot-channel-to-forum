@@ -128,6 +128,7 @@ async def handler(event: events.NewMessage.Event) -> None:
     Обработчик новых сообщений из источника (канала).
     Отправляет сообщения в темы форума с учетом фильтров.
     """
+    logger.info(f"Получено сообщение {event.message.id} в канале {source_channel}")
     for target in targets:
         try:
             if check_filters(event.message, target.filters):
@@ -140,6 +141,10 @@ async def handler(event: events.NewMessage.Event) -> None:
                 )
                 logger.info(
                     f"Репост {event.message.id} → {target_name} ({target_link})#{target.thread_id}"
+                )
+            else:
+                logger.info(
+                    f"Сообщение {event.message.id} не прошло фильтры для {target.forum_chat_id}#{target.thread_id}"
                 )
         except Exception as e:
             target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
