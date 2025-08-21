@@ -1,7 +1,7 @@
 """
 Бот для репоста сообщений из Telegram-канала в форум-чат.
 Поддерживает фильтрацию, логирование с названиями, ссылками, версиями модулей и названиями тем.
-Добавляет ссылку на канал (invite_link_to_source_channel или source_channel) в сообщения без предпросмотра.
+Добавляет ссылку на канал в формате "📢 {source_name}<link_to_use>" без предпросмотра.
 """
 
 import json
@@ -67,14 +67,14 @@ try:
     with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
         config_data: Dict[str, Any] = json.load(config_file)
     config: Config = Config.model_validate(config_data)
-except FileNotFoundError:
+except FileNotFoundError as exc_config:
     logger.error(f"Config file not found: {CONFIG_PATH}")
     raise
-except ValidationError as e:
-    logger.error(f"Invalid config format: {e}")
+except ValidationError as exc_validation:
+    logger.error(f"Invalid config format: {exc_validation}")
     raise
-except json.JSONDecodeError as e:
-    logger.error(f"Invalid JSON in config: {e}")
+except json.JSONDecodeError as exc_json:
+    logger.error(f"Invalid JSON in config: {exc_json}")
     raise
 
 api_id: int = config.api_id
@@ -102,11 +102,11 @@ async def get_entity_name_and_link(entity_id: str | int) -> tuple[str, str]:
             name = "Unknown"
             link = f"ID: {entity_id}"
         return name, link
-    except (ChannelInvalidError, ChannelPrivateError) as e:
-        logger.error(f"Cannot access entity {entity_id}: {e}")
+    except (ChannelInvalidError, ChannelPrivateError) as exc_entity_access:
+        logger.error(f"Cannot access entity {entity_id}: {exc_entity_access}")
         return "Inaccessible", f"ID: {entity_id}"
-    except Exception as e:
-        logger.error(f"Failed to get entity {entity_id}: {e}")
+    except Exception as exc_entity:
+        logger.error(f"Failed to get entity {entity_id}: {exc_entity}")
         return "Unknown", f"ID: {entity_id}"
 
 async def get_topic_name(forum_chat_id: int, thread_id: int) -> str:
@@ -118,11 +118,11 @@ async def get_topic_name(forum_chat_id: int, thread_id: int) -> str:
         if message and message.message:
             return message.message[:50] + ("..." if len(message.message) > 50 else "")
         return f"Topic #{thread_id}"
-    except MessageIdInvalidError:
-        logger.error(f"Invalid thread_id {thread_id} for forum_chat_id {forum_chat_id}")
+    except MessageIdInvalidError as exc_topic_invalid:
+        logger.error(f"Invalid thread_id {thread_id} for forum_chat_id {forum_chat_id}: {exc_topic_invalid}")
         return f"Topic #{thread_id}"
-    except Exception as e:
-        logger.error(f"Failed to get topic name for thread_id {thread_id} in {forum_chat_id}: {e}")
+    except Exception as exc_topic:
+        logger.error(f"Failed to get topic name for thread_id {thread_id} in {forum_chat_id}: {exc_topic}")
         return f"Topic #{thread_id}"
 
 def check_filters(message: Message, filters: Optional[Filter]) -> bool:
@@ -147,13 +147,13 @@ def check_filters(message: Message, filters: Optional[Filter]) -> bool:
 async def handler(event: events.NewMessage.Event) -> None:
     """
     Обработчик новых сообщений из источника (канала).
-    Отправляет сообщения в темы форума с учетом фильтров и добавляет ссылку на канал без предпросмотра.
+    Отправляет сообщения в темы форума с учетом фильтров и добавляет "📢 {source_name}<link_to_use>" без предпросмотра.
     """
     logger.info(f"Получено сообщение {event.message.id} в канале {source_channel}")
     source_name, source_link = await get_entity_name_and_link(source_channel)
     link_to_use = invite_link if invite_link else source_link
     message_text = event.message.message or ""
-    message_text = f"{message_text}\n\nИсточник: {link_to_use}" if message_text else f"Источник: {link_to_use}"
+    message_text = f"{message_text}\n\n📢 {source_name}<{link_to_use}>" if message_text else f"📢 {source_name}<{link_to_use}>"
 
     for target in targets:
         try:
@@ -175,10 +175,10 @@ async def handler(event: events.NewMessage.Event) -> None:
                 logger.info(
                     f"Сообщение {event.message.id} не прошло фильтры для {target.forum_chat_id} ({topic_name})"
                 )
-        except Exception as e:
+        except Exception as exc_handler:
             target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
             topic_name = await get_topic_name(target.forum_chat_id, target.thread_id)
-            logger.error(f"{e} → {target_name} ({target_link}, {topic_name})")
+            logger.error(f"{exc_handler} → {target_name} ({target_link}, {topic_name})")
 
 async def log_installed_modules() -> None:
     """
@@ -204,12 +204,12 @@ async def log_installed_modules() -> None:
                         break
                 else:
                     logger.warning(f"Версия для {module_name} не найдена")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Не удалось получить информацию о модуле {module_name}: {e}")
-    except FileNotFoundError:
+            except subprocess.CalledProcessError as exc_module:
+                logger.error(f"Не удалось получить информацию о модуле {module_name}: {exc_module}")
+    except FileNotFoundError as exc_req_file:
         logger.error(f"Файл requirements.txt не найден: {REQUIREMENTS_PATH}")
-    except Exception as e:
-        logger.error(f"Ошибка при чтении requirements.txt: {e}")
+    except Exception as exc_modules:
+        logger.error(f"Ошибка при чтении requirements.txt: {exc_modules}")
 
 async def main():
     """
