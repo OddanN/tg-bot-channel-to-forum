@@ -1,7 +1,7 @@
 """
-Бот для репоста сообщений из Telegram-канала в форум-чат.
+Бот для пересылки или копирования сообщений из Telegram-канала в темы форума.
 Поддерживает фильтрацию, логирование с названиями, ссылками, версиями модулей и названиями тем.
-Добавляет кликабельную ссылку в формате "📢 <a href='link_to_use'>source_name</a>" без предпросмотра.
+Режим работы (пересылка или копирование) определяется параметром forward_mode в config.json.
 """
 
 import json
@@ -60,6 +60,7 @@ class Config(BaseModel):
     bot_token: str
     source_channel: str
     invite_link_to_source_channel: Optional[str] = None
+    forward_mode: bool
     targets: List[Target]
 
 # Загружаем и валидируем конфиг
@@ -82,6 +83,7 @@ api_hash: str = config.api_hash
 bot_token: str = config.bot_token
 source_channel: str = config.source_channel
 invite_link: Optional[str] = config.invite_link_to_source_channel
+forward_mode: bool = config.forward_mode
 targets: List[Target] = config.targets
 
 client: TelegramClient = TelegramClient("bot", api_id, api_hash).start(bot_token=bot_token)
@@ -147,30 +149,41 @@ def check_filters(message: Message, filters: Optional[Filter]) -> bool:
 async def handler(event: events.NewMessage.Event) -> None:
     """
     Обработчик новых сообщений из источника (канала).
-    Отправляет сообщения в темы форума с учетом фильтров и добавляет "📢 <a href='link_to_use'>source_name</a>" без предпросмотра.
+    В зависимости от forward_mode: пересылает сообщения (forward_messages) или копирует с добавлением строки источника.
     """
     logger.info(f"Получено сообщение {event.message.id} в канале {source_channel}")
     source_name, source_link = await get_entity_name_and_link(source_channel)
     link_to_use = invite_link if invite_link else source_link
-    message_text = event.message.message or ""
-    message_text = f'{message_text}\n\n📢 <a href="{link_to_use}">{source_name}</a>' if message_text else f'📢 <a href="{link_to_use}">{source_name}</a>'
 
     for target in targets:
         try:
             if check_filters(event.message, target.filters):
                 target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
                 topic_name = await get_topic_name(target.forum_chat_id, target.thread_id)
-                await client.send_message(
-                    entity=target.forum_chat_id,
-                    message=message_text,
-                    file=event.message.media,
-                    reply_to=target.thread_id,
-                    link_preview=False,
-                    parse_mode="HTML"
-                )
-                logger.info(
-                    f"Репост {event.message.id} → {target_name} ({target_link}, {topic_name})"
-                )
+                if forward_mode:
+                    await client.forward_messages(
+                        entity=target.forum_chat_id,
+                        messages=event.message.id,
+                        from_peer=source_channel,
+                        message_thread_id=target.thread_id
+                    )
+                    logger.info(
+                        f"Пересылка {event.message.id} → {target_name} ({target_link}, {topic_name})"
+                    )
+                else:
+                    message_text = event.message.message or ""
+                    message_text = f'{message_text}\n\n📢 <a href="{link_to_use}">{source_name}</a>' if message_text else f'📢 <a href="{link_to_use}">{source_name}</a>'
+                    await client.send_message(
+                        entity=target.forum_chat_id,
+                        message=message_text,
+                        file=event.message.media,
+                        reply_to=target.thread_id,
+                        link_preview=False,
+                        parse_mode="HTML"
+                    )
+                    logger.info(
+                        f"Копирование {event.message.id} → {target_name} ({target_link}, {topic_name})"
+                    )
             else:
                 topic_name = await get_topic_name(target.forum_chat_id, target.thread_id)
                 logger.info(
@@ -218,7 +231,7 @@ async def main():
     """
     await log_installed_modules()
     source_name, source_link = await get_entity_name_and_link(source_channel)
-    logger.info(f"✅ Бот запущен и слушает канал: {source_name} ({source_link})")
+    logger.info(f"✅ Бот запущен и слушает канал: {source_name} ({source_link}) в режиме {'пересылки' if forward_mode else 'копирования'}")
 
     for target in targets:
         target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
