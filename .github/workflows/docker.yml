@@ -10,52 +10,79 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [linux/amd64, linux/arm64]
 
     steps:
-      # 1. Checkout code
+      # 1. Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Set up QEMU (для эмуляции ARM)
+      # 2. QEMU (для эмуляции arm на amd)
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # 3. Set up Buildx (для мультиарх сборки)
+      # 3. Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 4. Login to Docker Hub
+      # 4. Docker login
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 5. Extract short SHA
+      # 5. Extract SHA
       - name: Extract short SHA
         id: vars
         run: echo "sha_short=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      # 6. Build & push for commits (multi-arch)
-      - name: Build & push commit image
-        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v')
+      # 6. Build & push image per arch
+      - name: Build & push image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.arch }}
           tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:sha-${{ steps.vars.outputs.sha_short }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${{ steps.vars.outputs.sha_short }}-${{ matrix.arch }}
 
-      # 7. Build & push for tags (multi-arch)
-      - name: Build & push tag image
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: docker/build-push-action@v5
+  manifest:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      # Docker login
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:sha-${{ steps.vars.outputs.sha_short }}
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:latest
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${{ github.ref_name }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Create and push manifest
+      - name: Create and push manifest
+        run: |
+          # Текущий SHA
+          SHA_SHORT=$(echo $GITHUB_SHA | cut -c1-7)
+
+          # Собираем manifest для SHA
+          docker manifest create docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:sha-${SHA_SHORT} \
+            --amend docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${SHA_SHORT}-linux/amd64 \
+            --amend docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${SHA_SHORT}-linux/arm64
+          docker manifest push docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:sha-${SHA_SHORT}
+
+          # Всегда пушим latest
+          docker manifest create docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:latest \
+            --amend docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${SHA_SHORT}-linux/amd64 \
+            --amend docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${SHA_SHORT}-linux/arm64
+          docker manifest push docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:latest
+
+          # Если это тег релиза (vX.Y.Z) — пушим его тоже
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            docker manifest create docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${TAG} \
+              --amend docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${SHA_SHORT}-linux/amd64 \
+              --amend docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${SHA_SHORT}-linux/arm64
+            docker manifest push docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-channel-to-forum:${TAG}
+          fi
