@@ -10,7 +10,8 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 from telethon import TelegramClient, events
 from telethon.tl.custom.message import Message
-from telethon.tl.types import Channel, Chat
+from telethon.tl.types import Channel, Chat, User
+from telethon.errors import ChannelInvalidError, ChannelPrivateError
 from pydantic import BaseModel, ValidationError
 
 VOLUME_DIR: str = "volumes"
@@ -82,13 +83,23 @@ client: TelegramClient = TelegramClient("bot", api_id, api_hash).start(bot_token
 
 async def get_entity_name_and_link(entity_id: str | int) -> tuple[str, str]:
     """
-    Получает название и ссылку на канал или группу.
+    Получает название и ссылку на канал, супергруппу или чат.
     """
     try:
         entity = await client.get_entity(entity_id)
-        name = entity.title if isinstance(entity, (Channel, Chat)) else "Unknown"
-        link = f"https://t.me/{entity.username}" if hasattr(entity, "username") and entity.username else f"ID: {entity_id}"
+        if isinstance(entity, (Channel, Chat)):
+            name = entity.title
+            link = f"https://t.me/{entity.username}" if hasattr(entity, "username") and entity.username else f"ID: {entity_id}"
+        elif isinstance(entity, User):
+            name = entity.first_name or "Unknown User"
+            link = f"ID: {entity_id}"
+        else:
+            name = "Unknown"
+            link = f"ID: {entity_id}"
         return name, link
+    except (ChannelInvalidError, ChannelPrivateError) as e:
+        logger.error(f"Cannot access entity {entity_id}: {e}")
+        return "Inaccessible", f"ID: {entity_id}"
     except Exception as e:
         logger.error(f"Failed to get entity {entity_id}: {e}")
         return "Unknown", f"ID: {entity_id}"
@@ -131,6 +142,7 @@ async def handler(event: events.NewMessage.Event) -> None:
                     f"Репост {event.message.id} → {target_name} ({target_link})#{target.thread_id}"
                 )
         except Exception as e:
+            target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
             logger.error(f"{e} → {target_name} ({target_link})")
 
 async def main():
