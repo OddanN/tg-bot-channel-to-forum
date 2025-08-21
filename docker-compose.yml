@@ -4,6 +4,6 @@ services:
     container_name: tg-forwarder
     restart: always
     volumes:
-      - /mnt/configs_containers/tg-bot-channel-to-forum/volumes:/app/volumes
+      - /volumes:/app/volumes
     environment:
       - PYTHONUNBUFFERED=1
