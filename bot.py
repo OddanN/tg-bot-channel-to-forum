@@ -1,6 +1,7 @@
 """
 Бот для репоста сообщений из Telegram-канала в форум-чат.
-Поддерживает фильтрацию и логирование с названиями, ссылками и версиями модулей.
+Поддерживает фильтрацию, логирование с названиями, ссылками, версиями модулей и названиями тем.
+Добавляет ссылку на канал (invite_link_to_source_channel или source_channel) в сообщения.
 """
 
 import json
@@ -12,7 +13,7 @@ from logging.handlers import TimedRotatingFileHandler
 from telethon import TelegramClient, events
 from telethon.tl.custom.message import Message
 from telethon.tl.types import Channel, Chat, User
-from telethon.errors import ChannelInvalidError, ChannelPrivateError
+from telethon.errors import ChannelInvalidError, ChannelPrivateError, MessageIdInvalidError
 from pydantic import BaseModel, ValidationError
 
 VOLUME_DIR: str = "volumes"
@@ -58,6 +59,7 @@ class Config(BaseModel):
     api_hash: str
     bot_token: str
     source_channel: str
+    invite_link_to_source_channel: Optional[str] = None
     targets: List[Target]
 
 # Загружаем и валидируем конфиг
@@ -79,6 +81,7 @@ api_id: int = config.api_id
 api_hash: str = config.api_hash
 bot_token: str = config.bot_token
 source_channel: str = config.source_channel
+invite_link: Optional[str] = config.invite_link_to_source_channel
 targets: List[Target] = config.targets
 
 client: TelegramClient = TelegramClient("bot", api_id, api_hash).start(bot_token=bot_token)
@@ -106,6 +109,22 @@ async def get_entity_name_and_link(entity_id: str | int) -> tuple[str, str]:
         logger.error(f"Failed to get entity {entity_id}: {e}")
         return "Unknown", f"ID: {entity_id}"
 
+async def get_topic_name(forum_chat_id: int, thread_id: int) -> str:
+    """
+    Получает название темы форума по forum_chat_id и thread_id.
+    """
+    try:
+        message = await client.get_messages(forum_chat_id, ids=thread_id)
+        if message and message.message:
+            return message.message[:50] + ("..." if len(message.message) > 50 else "")
+        return f"Topic #{thread_id}"
+    except MessageIdInvalidError:
+        logger.error(f"Invalid thread_id {thread_id} for forum_chat_id {forum_chat_id}")
+        return f"Topic #{thread_id}"
+    except Exception as e:
+        logger.error(f"Failed to get topic name for thread_id {thread_id} in {forum_chat_id}: {e}")
+        return f"Topic #{thread_id}"
+
 def check_filters(message: Message, filters: Optional[Filter]) -> bool:
     """
     Проверяет сообщение по заданным фильтрам.
@@ -128,29 +147,37 @@ def check_filters(message: Message, filters: Optional[Filter]) -> bool:
 async def handler(event: events.NewMessage.Event) -> None:
     """
     Обработчик новых сообщений из источника (канала).
-    Отправляет сообщения в темы форума с учетом фильтров.
+    Отправляет сообщения в темы форума с учетом фильтров и добавляет ссылку на источник.
     """
     logger.info(f"Получено сообщение {event.message.id} в канале {source_channel}")
+    source_name, source_link = await get_entity_name_and_link(source_channel)
+    link_to_use = invite_link if invite_link else source_link
+    message_text = event.message.message or ""
+    message_text = f"{message_text}\n\nИсточник: {link_to_use}" if message_text else f"Источник: {link_to_use}"
+
     for target in targets:
         try:
             if check_filters(event.message, target.filters):
                 target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
+                topic_name = await get_topic_name(target.forum_chat_id, target.thread_id)
                 await client.send_message(
                     entity=target.forum_chat_id,
-                    message=event.message.message or "",
+                    message=message_text,
                     file=event.message.media,
                     reply_to=target.thread_id
                 )
                 logger.info(
-                    f"Репост {event.message.id} → {target_name} ({target_link})#{target.thread_id}"
+                    f"Репост {event.message.id} → {target_name} ({target_link}, {topic_name})"
                 )
             else:
+                topic_name = await get_topic_name(target.forum_chat_id, target.thread_id)
                 logger.info(
-                    f"Сообщение {event.message.id} не прошло фильтры для {target.forum_chat_id}#{target.thread_id}"
+                    f"Сообщение {event.message.id} не прошло фильтры для {target.forum_chat_id} ({topic_name})"
                 )
         except Exception as e:
             target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
-            logger.error(f"{e} → {target_name} ({target_link})")
+            topic_name = await get_topic_name(target.forum_chat_id, target.thread_id)
+            logger.error(f"{e} → {target_name} ({target_link}, {topic_name})")
 
 async def log_installed_modules() -> None:
     """
@@ -185,7 +212,7 @@ async def log_installed_modules() -> None:
 
 async def main():
     """
-    Инициализация бота и логирование информации о канале, целях и модулях.
+    Инициализация бота и логирование информации о канале, целях, модулях и темах.
     """
     await log_installed_modules()
     source_name, source_link = await get_entity_name_and_link(source_channel)
@@ -193,7 +220,8 @@ async def main():
 
     for target in targets:
         target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
-        logger.info(f"Цель: {target_name} ({target_link})#{target.thread_id}")
+        topic_name = await get_topic_name(target.forum_chat_id, target.thread_id)
+        logger.info(f"Цель: {target_name} ({target_link}, {topic_name})")
 
 with client:
     client.loop.run_until_complete(main())

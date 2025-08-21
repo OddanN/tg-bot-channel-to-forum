@@ -3,6 +3,7 @@
   "api_hash": "abc123def4567890",
   "bot_token": "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
   "source_channel": "https://t.me/your_channel",
+  "invite_link_to_source_channel": "https://t.me/+utQDBo4GhndffdsZGMy",
   "targets": [
     {
       "forum_chat_id": -1001111111111,
