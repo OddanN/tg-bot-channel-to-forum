@@ -1,17 +1,15 @@
 <!-- ===================== BADGES ===================== -->
 
-<!-- 1️⃣ GitHub Actions -->
+<!-- 1️⃣ GitHub Release и License в одну строку -->
+![GitHub release](https://img.shields.io/github/v/release/OddanN/tg-bot-channel-to-forum.svg)
+![GitHub license](https://img.shields.io/github/license/OddanN/tg-bot-channel-to-forum.svg)
+
+<!-- 2️⃣ GitHub Actions -->
 ![Build Status](https://github.com/OddanN/tg-bot-channel-to-forum/actions/workflows/docker.yml/badge.svg)
 
-<!-- 2️⃣ Docker -->
+<!-- 3️⃣ Docker -->
 ![Docker Pulls](https://img.shields.io/docker/pulls/oddann/tg-bot-channel-to-forum.svg)
 ![Docker Stars](https://img.shields.io/docker/stars/oddann/tg-bot-channel-to-forum.svg)
-
-<!-- 3️⃣ GitHub Release -->
-![GitHub release](https://img.shields.io/github/v/release/OddanN/tg-bot-channel-to-forum.svg)
-
-<!-- 4️⃣ License -->
-![GitHub license](https://img.shields.io/github/license/OddanN/tg-bot-channel-to-forum.svg)
 
 <!-- ================================================== -->
 
