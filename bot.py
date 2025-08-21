@@ -1,10 +1,11 @@
 """
 Бот для репоста сообщений из Telegram-канала в форум-чат.
-Поддерживает фильтрацию и логирование с названиями и ссылками.
+Поддерживает фильтрацию и логирование с названиями, ссылками и версиями модулей.
 """
 
 import json
 import os
+import subprocess
 from typing import Dict, Any, Optional, List
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ValidationError
 VOLUME_DIR: str = "volumes"
 LOG_DIR: str = os.path.join(VOLUME_DIR, "logs")
 CONFIG_PATH: str = os.path.join(VOLUME_DIR, "config.json")
+REQUIREMENTS_PATH: str = "requirements.txt"
 
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -126,17 +128,16 @@ def check_filters(message: Message, filters: Optional[Filter]) -> bool:
 async def handler(event: events.NewMessage.Event) -> None:
     """
     Обработчик новых сообщений из источника (канала).
-    Отправляет сообщения в темы форума с учетом фильтров.
+    Пересылает сообщения в темы форума с учетом фильтров.
     """
     logger.info(f"Получено сообщение {event.message.id} в канале {source_channel}")
     for target in targets:
         try:
             if check_filters(event.message, target.filters):
                 target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
-                await client.send_message(
+                await client.forward_messages(
                     entity=target.forum_chat_id,
-                    message=event.message.message or "",
-                    file=event.message.media,
+                    messages=event.message,
                     message_thread_id=target.thread_id
                 )
                 logger.info(
@@ -150,10 +151,42 @@ async def handler(event: events.NewMessage.Event) -> None:
             target_name, target_link = await get_entity_name_and_link(target.forum_chat_id)
             logger.error(f"{e} → {target_name} ({target_link})")
 
+async def log_installed_modules() -> None:
+    """
+    Логирует версии установленных модулей из requirements.txt.
+    """
+    try:
+        with open(REQUIREMENTS_PATH, "r", encoding="utf-8") as req_file:
+            requirements = [line.strip() for line in req_file if line.strip() and not line.startswith("#")]
+        logger.info("Установленные модули из requirements.txt:")
+        for req in requirements:
+            module_name = req.split("==")[0].split(">=")[0].split("<")[0].strip()
+            try:
+                result = subprocess.run(
+                    ["pip", "show", module_name],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                for line in result.stdout.splitlines():
+                    if line.startswith("Version:"):
+                        version = line.split(": ")[1]
+                        logger.info(f"{module_name}: {version}")
+                        break
+                else:
+                    logger.warning(f"Версия для {module_name} не найдена")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Не удалось получить информацию о модуле {module_name}: {e}")
+    except FileNotFoundError:
+        logger.error(f"Файл requirements.txt не найден: {REQUIREMENTS_PATH}")
+    except Exception as e:
+        logger.error(f"Ошибка при чтении requirements.txt: {e}")
+
 async def main():
     """
-    Инициализация бота и логирование информации о канале и целях.
+    Инициализация бота и логирование информации о канале, целях и модулях.
     """
+    await log_installed_modules()
     source_name, source_link = await get_entity_name_and_link(source_channel)
     logger.info(f"✅ Бот запущен и слушает канал: {source_name} ({source_link})")
 
